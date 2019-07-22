@@ -148,22 +148,16 @@ class Distribubot:
                         balance += float(token_in_wallet['delegationsIn'])
                     if 'pendingUnstake' in token_in_wallet and float(token_in_wallet['pendingUnstake']) > 0:
                         balance += float(token_in_wallet['pendingUnstake'])
-                    print(balance)
                     
                     if balance > self.token_config[token]["min_token_in_wallet"]:
-                        print("hai")
                         if self.token_config[token]["token_in_wallet_for_each_outgoing_token"] > 0:
                             max_token_to_give = round(float(float(balance) / float(self.token_config[token]["token_in_wallet_for_each_outgoing_token"])),3)
-                            logging.info(max_token_to_give)
                         else:
                             max_token_to_give = self.token_config[token]["maximum_amount_per_comment"]
-                            logging.info("max per comment")
                     else:
                         max_token_to_give = 0
-                        logging.info("< 100 in wallet")
                 else:
                     max_token_to_give = 0
-                    logging.info("Never held PLKN")
                 
                 db_data = read_data(self.data_file)
                 if "accounts" in db_data and c_comment["author"] in db_data["accounts"] and token in db_data["accounts"][c_comment["author"]]:
