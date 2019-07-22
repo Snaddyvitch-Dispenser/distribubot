@@ -155,10 +155,13 @@ class Distribubot:
                             print(max_token_to_give)
                         else:
                             max_token_to_give = self.token_config[token]["maximum_amount_per_comment"]
+                            print("max per comment")
                     else:
                         max_token_to_give = 0
+                        print("< 100 in wallet")
                 else:
                     max_token_to_give = 0
+                    print("Never held PLKN")
                 
                 db_data = read_data(self.data_file)
                 if "accounts" in db_data and c_comment["author"] in db_data["accounts"] and token in db_data["accounts"][c_comment["author"]]:
