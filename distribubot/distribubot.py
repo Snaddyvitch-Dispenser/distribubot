@@ -186,7 +186,7 @@ class Distribubot:
                     reply_body = self.token_config[token]["no_token_left_body"]
                 else:
                     if "{}" in self.token_config[token]["sucess_reply_body"]:
-                        reply_body = (self.token_config[token]["sucess_reply_body"]).format(c_comment["parent_author"])
+                        reply_body = (self.token_config[token]["sucess_reply_body"]).format(c_comment["parent_author"],c_comment["parent_author"],c_comment["parent_author"])
                     else:
                         reply_body = self.token_config[token]["sucess_reply_body"]
                     if "{}" in self.token_config[token]["token_memo"]:
