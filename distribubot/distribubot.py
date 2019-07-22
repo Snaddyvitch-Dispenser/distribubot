@@ -151,7 +151,7 @@ class Distribubot:
                     
                     if balance > self.token_config[token]["min_token_in_wallet"]:
                         if self.token_config[token]["token_in_wallet_for_each_outgoing_token"] > 0:
-                            max_token_to_give = int(balance / self.token_config[token]["token_in_wallet_for_each_outgoing_token"])
+                            max_token_to_give = round(float(float(balance) / float(self.token_config[token]["token_in_wallet_for_each_outgoing_token"])),3)
                         else:
                             max_token_to_give = self.token_config[token]["maximum_amount_per_comment"]
                     else:
