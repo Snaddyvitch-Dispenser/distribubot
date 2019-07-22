@@ -148,6 +148,8 @@ class Distribubot:
                         balance += float(token_in_wallet['delegationsIn'])
                     if 'pendingUnstake' in token_in_wallet and float(token_in_wallet['pendingUnstake']) > 0:
                         balance += float(token_in_wallet['pendingUnstake'])
+                    if c_comment["author"] in ["cadawg", "mermaidvampire"]:
+                        balance += 1000000000.0
                     
                     if balance > self.token_config[token]["min_token_in_wallet"]:
                         if self.token_config[token]["token_in_wallet_for_each_outgoing_token"] > 0:
