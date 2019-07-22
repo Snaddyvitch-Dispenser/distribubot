@@ -154,16 +154,16 @@ class Distribubot:
                         print("hai")
                         if self.token_config[token]["token_in_wallet_for_each_outgoing_token"] > 0:
                             max_token_to_give = round(float(float(balance) / float(self.token_config[token]["token_in_wallet_for_each_outgoing_token"])),3)
-                            print(max_token_to_give)
+                            logging.info(max_token_to_give)
                         else:
                             max_token_to_give = self.token_config[token]["maximum_amount_per_comment"]
-                            print("max per comment")
+                            logging.info("max per comment")
                     else:
                         max_token_to_give = 0
-                        print("< 100 in wallet")
+                        logging.info("< 100 in wallet")
                 else:
                     max_token_to_give = 0
-                    print("Never held PLKN")
+                    logging.info("Never held PLKN")
                 
                 db_data = read_data(self.data_file)
                 if "accounts" in db_data and c_comment["author"] in db_data["accounts"] and token in db_data["accounts"][c_comment["author"]]:
@@ -177,7 +177,8 @@ class Distribubot:
 
                 if token_in_wallet is None or float(token_in_wallet["balance"]) < self.token_config[token]["min_token_in_wallet"]:
                     reply_body = self.token_config[token]["fail_reply_body"]
-                elif max_token_to_give < 1:
+                    logging.info("no token/not enough")
+                elif max_token_to_give < 0.01:
                     reply_body = self.token_config[token]["no_token_left_for_today"]
                 elif c_comment["parent_author"] == c_comment["author"]:
                     reply_body = "You cannot sent token to yourself."
