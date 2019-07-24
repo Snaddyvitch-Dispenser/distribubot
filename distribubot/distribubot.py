@@ -194,7 +194,7 @@ class Distribubot:
 
                     try:
                         logger.info("Sending %.2f %s to %s" % (amount, self.token_config[token]["symbol"], c_comment["parent_author"]))
-                        sendwallet.transfer(c_comment["parent_author"], amount, self.token_config[token]["symbol"], token_memo)
+                        sendwallet.transfer(c_comment["parent_author"], round(amount,3), self.token_config[token]["symbol"], token_memo)
                         
                         if "accounts" in db_data:
                             accounts = db_data["accounts"]
