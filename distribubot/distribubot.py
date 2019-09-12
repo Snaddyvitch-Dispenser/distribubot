@@ -54,21 +54,28 @@ class Distribubot:
         necessary_fields = ["token_account", "symbol", "min_token_in_wallet", "comment_command",
                             "token_memo", "reply", "sucess_reply_body", "fail_reply_body", "no_token_left_body",
                             "user_can_specify_amount", "usage_upvote_percentage", "no_token_left_for_today",
-                            "token_in_wallet_for_each_outgoing_token", "maximum_amount_per_comment"]
+                            "token_in_wallet_for_each_outgoing_token", "maximum_amount_per_comment",
+                            "count_only_staked_token"]
         self.token_config = check_config(self.config["config"], necessary_fields, self.stm)
 
         self.blockchain = Blockchain(mode='head', steem_instance=self.stm)
     
 
-    def run(self, start_block):
+    def run(self, start_block, stop_block):
         self.stm.wallet.unlock(self.config["wallet_password"])  
         self.blockchain = Blockchain(mode='head', steem_instance=self.stm)
-        stop_block = self.blockchain.get_current_block_num()
-
-        if start_block is not None:
+        current_block = self.blockchain.get_current_block_num()
+        if stop_block is None or stop_block > current_block:
+            stop_block = current_block
+        
+        if start_block is None:
+            start_block = current_block
+            last_block_num = current_block - 1
+        else:
             last_block_num = start_block - 1
+
         self.log_data["start_block_num"] = start_block
-        for op in self.blockchain.stream(start=start_block, stop=stop_block, opNames=["comment"],  max_batch_size=50):
+        for op in self.blockchain.stream(start=start_block, stop=stop_block, opNames=["comment"]):
             self.log_data = print_block_log(self.log_data, op, self.config["print_log_at_block"])
             last_block_num = op["block_num"]
             
@@ -82,24 +89,65 @@ class Distribubot:
                     continue
                 if op["author"] == self.token_config[token]["token_account"]:
                     continue
-
-                try:
-                    c_comment = Comment(op, steem_instance=self.stm)
-                    c_comment.refresh()
-                except:
+                cnt = 0
+                c_comment = None
+                authorperm = construct_authorperm(op)
+                while c_comment is None and cnt < 5:
+                    cnt += 1
+                    try:
+                        c_comment = Comment(authorperm, use_tags_api=True, steem_instance=self.stm)
+                        c_comment.refresh()
+                    except:
+                        nodelist = NodeList()
+                        nodelist.update_nodes()
+                        self.stm = Steem(node=nodelist.get_nodes(), num_retries=5, call_num_retries=3, timeout=15)                        
+                        time.sleep(1)
+                if cnt == 5 or c_comment is None:
                     logger.warn("Could not read %s/%s" % (op["author"], op["permlink"]))
                     continue
-                if c_comment.is_main_post():
-                    continue
+                if 'depth' in c_comment:
+                    if c_comment['depth'] == 0:
+                        continue
+                else:
+                    if c_comment["parent_author"] == '':
+                        continue
+ 
                 if abs((c_comment["created"] - op['timestamp']).total_seconds()) > 9.0:
                     logger.warn("Skip %s, as edited" % c_comment["authorperm"])
                     continue
-                already_replied = False
-                for r in c_comment.get_all_replies():
-                    if r["author"] == self.token_config[token]["token_account"]:
-                        already_replied = True
-                if already_replied:
+                
+                
+                already_voted = False
+                for v in c_comment.get_votes(raw_data=True):
+                    if self.token_config[token]["token_account"] == v["voter"]:
+                        already_voted = True
+                if already_voted:
                     continue
+                
+                already_replied = None
+                cnt = 0
+                if self.token_config[token]["usage_upvote_percentage"] == 0:
+                    
+                    while already_replied is None and cnt < 5:
+                        cnt += 1
+                        try:
+                            already_replied = False
+                            for r in c_comment.get_all_replies():
+                                if r["author"] == self.token_config[token]["token_account"]:
+                                    already_replied = True
+                        except:
+                            already_replied = None
+                            self.stm.rpc.next()
+                    if already_replied is None:
+                        already_replied = False
+                        for r in c_comment.get_all_replies():
+                            if r["author"] == self.token_config[token]["token_account"]:
+                                already_replied = True
+    
+                    if already_replied:
+                        continue
+                
+                
                 
                 muting_acc = Account(self.token_config[token]["token_account"], steem_instance=self.stm)
                 blocked_accounts = muting_acc.get_mutings()
@@ -140,8 +188,13 @@ class Distribubot:
                 self.log_data["new_commands"] += 1
                 wallet = Wallet(c_comment["author"], steem_instance=self.stm)
                 token_in_wallet = wallet.get_token(self.token_config[token]["symbol"])
+                balance = 0
                 if token_in_wallet is not None:
-                    balance = float(token_in_wallet["balance"])
+                    logger.info(token_in_wallet)
+                    if self.token_config[token]["count_only_staked_token"]:
+                        balance = 0
+                    else:
+                        balance = float(token_in_wallet["balance"])
                     if "stake" in token_in_wallet:
                         balance += float(token_in_wallet['stake']) 
                     if 'delegationsIn' in token_in_wallet and float(token_in_wallet['delegationsIn']) > 0:
@@ -160,6 +213,7 @@ class Distribubot:
                         max_token_to_give = 0
                 else:
                     max_token_to_give = 0
+                logger.info("token to give for %s: %f" % (c_comment["author"], max_token_to_give))
                 
                 db_data = read_data(self.data_file)
                 if "accounts" in db_data and c_comment["author"] in db_data["accounts"] and token in db_data["accounts"][c_comment["author"]]:
@@ -171,7 +225,7 @@ class Distribubot:
                 if amount > self.token_config[token]["maximum_amount_per_comment"]:
                     amount = self.token_config[token]["maximum_amount_per_comment"]
 
-                if token_in_wallet is None or float(token_in_wallet["balance"]) < self.token_config[token]["min_token_in_wallet"]:
+                if token_in_wallet is None or balance < self.token_config[token]["min_token_in_wallet"]:
                     reply_body = self.token_config[token]["fail_reply_body"]
                     logging.info("no token/not enough")
                 elif max_token_to_give < 0.01:
@@ -231,6 +285,9 @@ class Distribubot:
                 else:
                     try:
                         self.stm.post("", reply_body, author=self.token_config[token]["token_account"], reply_identifier=reply_identifier)
+                        if self.token_config[token]["usage_upvote_percentage"] <= 0:
+                            time.sleep(5)
+                            self.stm.post("", "Command accepted!", author=self.token_config[token]["token_account"], reply_identifier=c_comment["authorperm"])
                     except Exception as e:
                         exc_type, exc_obj, exc_tb = sys.exc_info()
                         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -238,6 +295,7 @@ class Distribubot:
                         logger.warn("Could not reply to post")
                         continue
                     if self.token_config[token]["usage_upvote_percentage"] > 0:
+                        time.sleep(5)
                         try:
                             c_comment.upvote(self.token_config[token]["usage_upvote_percentage"], voter=self.token_config[token]["token_account"])
                         except Exception as e:
@@ -266,6 +324,8 @@ def main():
     nodelist = NodeList()
     nodelist.update_nodes()
     stm = Steem(node=nodelist.get_nodes(), num_retries=5, call_num_retries=3, timeout=15)
+    
+    logger.info(str(stm))
     data_file = os.path.join(datadir, 'data.db')
     bot = Distribubot(
         config,
@@ -286,13 +346,23 @@ def main():
   
     if "last_block_num" in data_db:
         start_block = data_db["last_block_num"] + 1
+        if start_block == 35922615:
+            start_block += 1
+        logger.info("Start block_num: %d" % start_block)
+        
+        stop_block = start_block + 100
     else:
         start_block = None
+        stop_block = None
     logger.info("starting token distributor..")
     block_counter = None
+    last_print_stop_block = stop_block
     while True:
-        
-        last_block_num = bot.run(start_block)
+        if start_block is not None and stop_block is not None:
+            if stop_block - last_print_stop_block > 1:
+                logger.info("%d - %d" % (start_block, stop_block))
+                last_print_stop_block = stop_block
+        last_block_num = bot.run(start_block, stop_block)
         # Update nodes once a day
         if block_counter is None:
             block_counter = last_block_num
@@ -301,8 +371,10 @@ def main():
             stm = Steem(node=nodelist.get_nodes(), num_retries=5, call_num_retries=3, timeout=15)
             
             bot.stm = stm
-
+        
         start_block = last_block_num + 1
+        
+        stop_block = start_block + 100
         store_data(data_file, "last_block_num", last_block_num)
         time.sleep(3)
 
