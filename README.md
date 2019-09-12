@@ -21,7 +21,7 @@ pip3 install distribubot
 or clone the git and install the package by
 ```
 pip3 install beem steemengine
-git clone https://github.com/steem-engine-exchange/distribubot.git
+git clone https://github.com/Snaddyvitch-Dispenser/plankton-distribubot.git
 cd distribubot
 python3 setup.py install
 ```
